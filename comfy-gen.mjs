@@ -36,6 +36,7 @@ import { parseArgs } from 'node:util'
 const here = dirname(fileURLToPath(import.meta.url))
 
 const DEFAULT_WORKFLOW = join(here, 'comfy-zimage.json')
+const DEFAULT_OUTPUT_DIR = join(here, 'output')
 const DEFAULT_COMFY_URL = 'http://127.0.0.1:8188'
 const LAUNCH_SCRIPT = 'D:\\dev\\comfyui-rocm\\comfyui-user.bat'
 const LAUNCH_LOCK = join(tmpdir(), 'comfy-helper-launch.lock')
@@ -61,7 +62,8 @@ Usage:
 Options:
   --prompt <text>     The image prompt. "-" reads it from stdin.
   --prompt-file <p>   Read the prompt from a UTF-8 text file.
-  --out <path>        Where to write the PNG. Default ./comfy-<timestamp>.png.
+  --out <path>        Where to write the PNG. Default output/comfy-<timestamp>.png
+                      next to this script.
                       Parent folders are created.
   --width <px>        Image width.  Default 1024. Multiples of 16 work best.
   --height <px>       Image height. Default 1024.
@@ -515,7 +517,9 @@ async function main() {
 
   const workflowPath = values.workflow ? resolve(values.workflow) : DEFAULT_WORKFLOW
   if (!existsSync(workflowPath)) throw new CliError(`workflow not found: ${workflowPath}`, EXIT.usage)
-  const outPath = resolve(values.out ?? `comfy-${new Date().toISOString().replace(/[:.]/g, '-')}.png`)
+  const outPath = values.out
+    ? resolve(values.out)
+    : join(DEFAULT_OUTPUT_DIR, `comfy-${new Date().toISOString().replace(/[:.]/g, '-')}.png`)
 
   const workflow = applyOverrides(applyTokens(JSON.parse(readFileSync(workflowPath, 'utf8')), { [PROMPT_TOKEN]: prompt }), {
     width,
