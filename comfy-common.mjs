@@ -128,8 +128,11 @@ export async function readPrompt(values) {
   return prompt
 }
 
-/** Default output path: <dir>/<prefix>-<timestamp>.png. */
-export const timestampedPng = (dir, prefix) => join(dir, `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`)
+/** Default output path: <dir>/<prefix>-<timestamp>.<extension>. */
+export const timestampedFile = (dir, prefix, extension) =>
+  join(dir, `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`)
+
+export const timestampedPng = (dir, prefix) => timestampedFile(dir, prefix, 'png')
 
 /**
  * The render budget: --timeout when given, otherwise `secondsPerFhd` scaled by the pixel count
@@ -266,12 +269,16 @@ export class ComfyClient {
   }
 }
 
-function firstImage(outputs) {
+/** The first file a workflow saved under `key` ("images", "audio", ...). */
+function firstOutput(outputs, key) {
   for (const output of Object.values(outputs)) {
-    if (Array.isArray(output?.images) && output.images.length) return output.images[0]
+    if (Array.isArray(output?.[key]) && output[key].length) return output[key][0]
   }
   return null
 }
+
+/** The default `output` for render(): a PNG from SaveImage. */
+const PNG_OUTPUT = { key: 'images', kind: 'image', isValid: (bytes) => bytes.subarray(0, 8).equals(PNG_MAGIC), format: 'a PNG' }
 
 // --- launching ----------------------------------------------------------------
 
@@ -452,16 +459,17 @@ export async function connect(values) {
 }
 
 /**
- * Runs one workflow to a saved PNG, launching ComfyUI when needed. ComfyUI can crash (or report
+ * Runs one workflow to a saved file (a PNG unless `output` says otherwise: the history key it is
+ * listed under, and how to recognise its bytes), launching ComfyUI when needed. ComfyUI can crash (or report
  * OOM) under memory pressure; it is relaunched / told to free VRAM and the render retried.
  * `prepare` runs after ComfyUI is up and before each queue (e.g. to upload input images) and
  * returns the workflow; `timeoutFor(launchedNow)` gives the render budget for that attempt.
  */
-export async function render({ client, launchOptions, retries }, { prepare, timeoutFor, describe, outPath }) {
+export async function render({ client, launchOptions, retries }, { prepare, timeoutFor, describe, outPath, output = PNG_OUTPUT }) {
   let launched = false
   let attempts = 0
   let promptId
-  let image
+  let file
   const startedAt = Date.now()
 
   for (;;) {
@@ -472,7 +480,7 @@ export async function render({ client, launchOptions, retries }, { prepare, time
       const workflow = await prepare(client)
       promptId = await client.queuePrompt(workflow)
       log(`queued ${promptId} (${describe})${attempts > 1 ? ` — attempt ${attempts}` : ''}`)
-      image = firstImage(await client.waitForOutputs(promptId, timeoutFor(launchedNow)))
+      file = firstOutput(await client.waitForOutputs(promptId, timeoutFor(launchedNow)), output.key)
       break
     } catch (error) {
       if (!(error instanceof RetryableError) || attempts > retries) throw error
@@ -481,10 +489,10 @@ export async function render({ client, launchOptions, retries }, { prepare, time
       else await client.freeMemory()
     }
   }
-  if (!image) throw new CliError('workflow finished without an image output', EXIT.failed)
+  if (!file) throw new CliError(`workflow finished without an ${output.kind} output`, EXIT.failed)
 
-  const bytes = await client.download(image)
-  if (!bytes.subarray(0, 8).equals(PNG_MAGIC)) throw new CliError(`${image.filename} is not a PNG — not saved`, EXIT.failed)
+  const bytes = await client.download(file)
+  if (!output.isValid(bytes)) throw new CliError(`${file.filename} is not ${output.format} — not saved`, EXIT.failed)
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, bytes)
   const seconds = Number(((Date.now() - startedAt) / 1000).toFixed(1))
