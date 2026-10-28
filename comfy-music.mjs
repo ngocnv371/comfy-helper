@@ -7,6 +7,9 @@
  * along with lyrics, BPM, key, time signature and language; its language model writes audio codes
  * first (generate_audio_codes), then the turbo DiT samples 8 steps at CFG 1 through
  * ModelSamplingAuraFlow (shift 3) and the audio VAE decodes. No lyrics means an instrumental.
+ * The audio is VAE-decoded in overlapping 60s tiles: decoding even 5 minutes in one go runs out of
+ * VRAM next to the loaded models (10 minutes asks for ~13 GB), and ComfyUI's fallback re-decodes
+ * tiled anyway after the failed attempt. A piece of 60s or less is a single tile.
  *
  * Usage: node comfy-music.mjs --prompt "lofi hip hop, warm rhodes, vinyl crackle" --duration 90 [options]
  * Run with --help for every option.
@@ -43,6 +46,9 @@ const MODEL = {
   shift: 3,
 }
 const MAX_DURATION = 600
+/** ACE-Step 1.5 latents run at 48000 / 1920 = 25 frames per second of audio. */
+const LATENT_FPS = 25
+const DECODE_TILE = { tile_size: 60 * LATENT_FPS, overlap: 64 }
 
 const startsWith = (bytes, text) => bytes.subarray(0, text.length).toString('latin1') === text
 /** Save node, its quality choices, and how to recognise the file it writes. */
@@ -169,7 +175,7 @@ function buildWorkflow({ prompt, lyrics, duration, bpm, key, timeSignature, lang
     negative: [negative, 0],
     latent_image: [empty, 0],
   })
-  const decoded = add('VAEDecodeAudio', { samples: [sampled, 0], vae: [vae, 0] })
+  const decoded = add('VAEDecodeAudioTiled', { samples: [sampled, 0], vae: [vae, 0], ...DECODE_TILE })
   const save = { filename_prefix: 'audio/comfy-music', audio: [decoded, 0] }
   if (quality !== null) save.quality = quality
   add(FORMATS[format].node, save)
