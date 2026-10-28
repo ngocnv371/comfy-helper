@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * comfy-edit — render one image from a prompt plus one or more reference images with the local
- * ComfyUI (FLUX.2 Klein), for agents: same io contract and auto-launch as comfy-gen.
+ * ComfyUI (FLUX.2 Klein), for agents: same io contract and auto-launch as comfy-image.
  *
  * Each reference is uploaded into ComfyUI's input/comfy-helper folder (named by content hash, so
  * re-sending an image does not pile up copies), scaled to ~1 megapixel, VAE-encoded and chained
@@ -233,7 +233,7 @@ async function main() {
   const session = await connect(values)
 
   // Validate everything before possibly spending minutes launching ComfyUI.
-  if (!values.ref?.length) throw new CliError('at least one --ref <image> is required (use comfy-gen for prompt-only)', EXIT.usage)
+  if (!values.ref?.length) throw new CliError('at least one --ref <image> is required (use comfy-image for prompt-only)', EXIT.usage)
   const refs = values.ref.map(checkRef)
   const prompt = await readPrompt(values)
   if ((values.width === undefined) !== (values.height === undefined)) {

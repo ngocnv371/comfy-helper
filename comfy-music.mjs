@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * comfy-music — render one piece of music from a style prompt (and optional lyrics) with the
- * local ComfyUI (ACE-Step 1.5 turbo), for agents: same io contract and auto-launch as comfy-gen.
+ * local ComfyUI (ACE-Step 1.5 turbo), for agents: same io contract and auto-launch as comfy-image.
  *
  * The graph follows comfy-music.json: the prompt goes to TextEncodeAceStepAudio1.5 as its tags,
  * along with lyrics, BPM, key, time signature and language; its language model writes audio codes

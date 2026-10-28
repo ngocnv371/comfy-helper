@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * comfy-gen — render one image from a text prompt with the local ComfyUI, built to be driven by
+ * comfy-image — render one image from a text prompt with the local ComfyUI, built to be driven by
  * other AI agents: logs go to stderr, the result is a single JSON line on stdout, and the exit
  * code says what went wrong. ComfyUI is launched on demand; see comfy-common.mjs.
  *
@@ -10,7 +10,7 @@
  * A 1920x1080 render normally finishes in under 60s; the render timeout scales from that with the
  * pixel count, and is doubled for the first render after a launch (models load then).
  *
- * Usage: node comfy-gen.mjs --prompt "a red fox in snow" --out D:/tmp/fox.png [options]
+ * Usage: node comfy-image.mjs --prompt "a red fox in snow" --out D:/tmp/fox.png [options]
  * Run with --help for every option.
  *
  * Exit codes:
@@ -47,18 +47,18 @@ const PROMPT_TOKEN = '__PROMPT__'
 /** A 1920x1080 render normally finishes within this; bigger images get proportionally longer. */
 const RENDER_SECONDS_PER_FHD = 60
 
-const HELP = `comfy-gen — generate one image from a prompt with the local ComfyUI (Z-Image Turbo).
+const HELP = `comfy-image — generate one image from a prompt with the local ComfyUI (Z-Image Turbo).
 
 Usage:
-  node comfy-gen.mjs --prompt "<text>" [--out <file.png>] [options]
-  echo "<text>" | node comfy-gen.mjs --prompt - --out <file.png>
-  node comfy-gen.mjs --check     # is ComfyUI up? never launches
-  node comfy-gen.mjs --start     # make sure ComfyUI is up, then exit
+  node comfy-image.mjs --prompt "<text>" [--out <file.png>] [options]
+  echo "<text>" | node comfy-image.mjs --prompt - --out <file.png>
+  node comfy-image.mjs --check     # is ComfyUI up? never launches
+  node comfy-image.mjs --start     # make sure ComfyUI is up, then exit
 
 Options:
   --prompt <text>     The image prompt. "-" reads it from stdin.
   --prompt-file <p>   Read the prompt from a UTF-8 text file.
-  --out <path>        Where to write the PNG. Default output/comfy-<timestamp>.png
+  --out <path>        Where to write the PNG. Default output/comfy-image-<timestamp>.png
                       next to this script.
   --width <px>        Image width.  Default 1024. Multiples of 16 work best.
   --height <px>       Image height. Default 1024.
@@ -150,7 +150,7 @@ async function main() {
     process.stdout.write(`${HELP}\n`)
     process.exit(EXIT.ok)
   }
-  configureLog('comfy-gen', values.quiet)
+  configureLog('comfy-image', values.quiet)
   const session = await connect(values)
 
   // Validate everything before possibly spending minutes launching ComfyUI.
@@ -163,7 +163,7 @@ async function main() {
 
   const workflowPath = values.workflow ? resolve(values.workflow) : DEFAULT_WORKFLOW
   if (!existsSync(workflowPath)) throw new CliError(`workflow not found: ${workflowPath}`, EXIT.usage)
-  const outPath = values.out ? resolve(values.out) : timestampedPng(DEFAULT_OUTPUT_DIR, 'comfy')
+  const outPath = values.out ? resolve(values.out) : timestampedPng(DEFAULT_OUTPUT_DIR, 'comfy-image')
 
   const workflow = applyOverrides(applyTokens(JSON.parse(readFileSync(workflowPath, 'utf8')), { [PROMPT_TOKEN]: prompt }), {
     width,
