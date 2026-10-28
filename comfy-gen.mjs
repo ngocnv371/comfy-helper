@@ -6,9 +6,13 @@
  *
  * If ComfyUI is not answering on the default port it is launched through comfyui-user.bat
  * (outside this process tree, so it outlives this process) and waited on; a launch that does not
- * answer within --launch-timeout is killed and relaunched. Concurrent callers share one launch
- * through a lock file, so two agents never start two servers. ComfyUI sometimes crashes under
- * memory pressure; a render that dies with it is relaunched and retried (--retries).
+ * answer within --launch-timeout (30s) is killed and relaunched. No launch is attempted while less
+ * than half the system RAM is free — ComfyUI would only die out of memory. Concurrent callers
+ * share one launch through a lock file, so two agents never start two servers. ComfyUI sometimes
+ * crashes under memory pressure; a render that dies with it is relaunched and retried (--retries).
+ *
+ * A 1920x1080 render normally finishes in under 60s; the render timeout scales from that with the
+ * pixel count, and is doubled for the first render after a launch (models load then).
  *
  * The workflow is comfy-zimage.json beside this script: __PROMPT__ is replaced with the prompt,
  * and the latent size / seed / steps / negative prompt are overridden when asked.
@@ -24,7 +28,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { freemem, tmpdir, totalmem } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -38,6 +42,11 @@ const LAUNCH_LOCK = join(tmpdir(), 'comfy-helper-launch.lock')
 const PROMPT_TOKEN = '__PROMPT__'
 const CLIENT_ID = 'comfy-gen'
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+/** Below this share of free system RAM a fresh ComfyUI dies out of memory while loading. */
+const MIN_FREE_RAM = 0.5
+/** A 1920x1080 render normally finishes within this; bigger images get proportionally longer. */
+const RENDER_SECONDS_PER_FHD = 60
+const FHD_PIXELS = 1920 * 1080
 
 const EXIT = { ok: 0, failed: 1, usage: 2, unavailable: 3 }
 
@@ -63,10 +72,12 @@ Options:
                       Default comfy-zimage.json next to this script.
   --url <url>         ComfyUI base URL. Default env COMFY_URL, then ${DEFAULT_COMFY_URL}.
   --no-launch         Fail (exit 3) instead of launching ComfyUI when it is down.
-  --launch-timeout <s>  How long a launch may take before it is killed and relaunched.
-                      Default 45 (a healthy boot takes ~30).
+  --launch-timeout <s>  How long a launch may go unanswered before it is killed. Default 30.
   --launch-attempts <n> Kill-and-relaunch attempts before giving up (exit 3). Default 3.
-  --timeout <s>       Render budget per attempt. Default 600 (first render after launch loads models).
+                      No launch happens while less than 50% of system RAM is free (exit 3):
+                      ComfyUI would die out of memory.
+  --timeout <s>       Render budget per attempt. Default scales with size: 60s per 1920x1080
+                      worth of pixels (at least 60s), doubled right after a launch.
   --retries <n>       If ComfyUI crashes mid-render (it does, out of memory) it is relaunched
                       and the render retried; an OOM error frees VRAM and retries. Default 2.
   --quiet             No progress logs on stderr.
@@ -355,6 +366,19 @@ function launchComfy() {
   })
 }
 
+/** Refuses to launch when RAM is too tight for ComfyUI to boot. */
+function assertEnoughRam() {
+  const free = freemem() / totalmem()
+  if (free < MIN_FREE_RAM) {
+    const gib = (bytes) => (bytes / 2 ** 30).toFixed(1)
+    throw new CliError(
+      `not launching ComfyUI: only ${gib(freemem())} of ${gib(totalmem())} GiB RAM free ` +
+        `(${Math.round(free * 100)}%, need ${MIN_FREE_RAM * 100}%) — it would run out of memory`,
+      EXIT.unavailable,
+    )
+  }
+}
+
 /** Polls until ComfyUI answers or the budget runs out. */
 async function waitUntilUp(client, budgetMs) {
   const deadline = Date.now() + budgetMs
@@ -384,6 +408,7 @@ async function ensureRunning(client, { allowLaunch, launchTimeoutMs, launchAttem
     if (tryTakeLaunchLock(launchTimeoutMs)) {
       try {
         killComfy()
+        assertEnoughRam() // after the kill, so a hung instance's memory is not counted against us
         log(`launching ${LAUNCH_SCRIPT} (attempt ${launch}/${launchAttempts}, ${launchTimeoutMs / 1000}s budget)`)
         launchComfy()
         touchLaunchLock()
@@ -391,7 +416,8 @@ async function ensureRunning(client, { allowLaunch, launchTimeoutMs, launchAttem
           log('ComfyUI is up')
           return true
         }
-        log(`ComfyUI did not answer within ${launchTimeoutMs / 1000}s`)
+        log(`ComfyUI did not answer within ${launchTimeoutMs / 1000}s — terminating it`)
+        killComfy()
       } finally {
         releaseLaunchLock()
       }
@@ -424,10 +450,10 @@ function parseCli() {
         workflow: { type: 'string' },
         url: { type: 'string' },
         'no-launch': { type: 'boolean', default: false },
-        'launch-timeout': { type: 'string', default: '45' },
+        'launch-timeout': { type: 'string', default: '30' },
         'launch-attempts': { type: 'string', default: '3' },
         retries: { type: 'string', default: '2' },
-        timeout: { type: 'string', default: '600' },
+        timeout: { type: 'string' },
         check: { type: 'boolean', default: false },
         start: { type: 'boolean', default: false },
         quiet: { type: 'boolean', default: false },
@@ -484,7 +510,8 @@ async function main() {
   const height = intOption('--height', values.height, 64)
   const seed = values.seed === undefined ? Math.floor(Math.random() * 2 ** 32) : intOption('--seed', values.seed, 0)
   const steps = values.steps === undefined ? null : intOption('--steps', values.steps, 1)
-  const timeoutMs = intOption('--timeout', values.timeout, 1) * 1000
+  const fixedTimeoutMs = values.timeout === undefined ? null : intOption('--timeout', values.timeout, 1) * 1000
+  const scaledTimeoutMs = Math.ceil(RENDER_SECONDS_PER_FHD * Math.max(1, (width * height) / FHD_PIXELS)) * 1000
 
   const workflowPath = values.workflow ? resolve(values.workflow) : DEFAULT_WORKFLOW
   if (!existsSync(workflowPath)) throw new CliError(`workflow not found: ${workflowPath}`, EXIT.usage)
@@ -509,7 +536,10 @@ async function main() {
   for (;;) {
     attempts += 1
     try {
-      launched = (await ensureRunning(client, launchOptions)) || launched
+      const launchedNow = await ensureRunning(client, launchOptions)
+      launched ||= launchedNow
+      // A freshly launched ComfyUI loads the models during its first render.
+      const timeoutMs = fixedTimeoutMs ?? (launchedNow ? 2 * scaledTimeoutMs : scaledTimeoutMs)
       promptId = await client.queuePrompt(workflow)
       log(`queued ${promptId} (${width}x${height}, seed ${seed})${attempts > 1 ? ` — attempt ${attempts}` : ''}`)
       image = firstImage(await client.waitForOutputs(promptId, timeoutMs))
