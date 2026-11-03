@@ -351,13 +351,16 @@ function killComfy() {
  * ComfyUI is not a child of this process, nor of the agent that called us, and survives when
  * either exits or has its process tree killed. (Handing it to explorer.exe does the same but
  * silently stops working after a few launches.) The script needs its own folder as the working
- * directory, for .\python_env.
+ * directory, for .\python_env. Its console opens minimised and never activated (ShowWindow 7,
+ * SW_SHOWMINNOACTIVE) from the first frame, so a launch never steals keyboard focus.
  */
 function launchComfy() {
   const quote = (text) => text.replace(/'/g, "''")
   const command =
+    `$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]7 }; ` +
     `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ ` +
-    `CommandLine = 'cmd.exe /c "${quote(LAUNCH_SCRIPT)}"'; CurrentDirectory = '${quote(dirname(LAUNCH_SCRIPT))}' }; ` +
+    `CommandLine = 'cmd.exe /c "${quote(LAUNCH_SCRIPT)}"'; CurrentDirectory = '${quote(dirname(LAUNCH_SCRIPT))}'; ` +
+    `ProcessStartupInformation = $si }; ` +
     `if ($r.ReturnValue -ne 0) { throw "Win32_Process.Create returned $($r.ReturnValue)" }`
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
     stdio: 'ignore',
