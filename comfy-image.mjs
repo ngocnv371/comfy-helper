@@ -32,6 +32,7 @@ import {
   connect,
   finish,
   intOption,
+  log,
   readPrompt,
   render,
   renderTimeout,
@@ -46,6 +47,8 @@ const DEFAULT_OUTPUT_DIR = join(here, 'output')
 const PROMPT_TOKEN = '__PROMPT__'
 /** A 1920x1080 render normally finishes within this; bigger images get proportionally longer. */
 const RENDER_SECONDS_PER_FHD = 60
+/** Prompts shorter than this many words rarely make a good image; see README.md. */
+const SHORT_PROMPT_WORDS = 50
 
 const HELP = `comfy-image — generate one image from a prompt with the local ComfyUI (Z-Image Turbo).
 
@@ -56,7 +59,9 @@ Usage:
   node comfy-image.mjs --start     # make sure ComfyUI is up, then exit
 
 Options:
-  --prompt <text>     The image prompt. "-" reads it from stdin.
+  --prompt <text>     The image prompt. "-" reads it from stdin. Write about three paragraphs
+                      (see README.md); under ${SHORT_PROMPT_WORDS} words logs a warning and adds a
+                      "warning" field to the output.
   --prompt-file <p>   Read the prompt from a UTF-8 text file.
   --out <path>        Where to write the PNG. Default output/comfy-image-<timestamp>.png
                       next to this script.
@@ -155,6 +160,12 @@ async function main() {
 
   // Validate everything before possibly spending minutes launching ComfyUI.
   const prompt = await readPrompt(values)
+  const words = prompt.split(/\s+/).filter(Boolean).length
+  const warning =
+    words < SHORT_PROMPT_WORDS
+      ? `prompt is only ${words} words; aim for about three paragraphs (subject, setting and composition, light and style) — see README.md`
+      : undefined
+  if (warning) log(`warning: ${warning}`)
   const width = intOption('--width', values.width, 64)
   const height = intOption('--height', values.height, 64)
   const seed = values.seed === undefined ? Math.floor(Math.random() * 2 ** 32) : intOption('--seed', values.seed, 0)
@@ -179,7 +190,7 @@ async function main() {
     describe: `${width}x${height}, seed ${seed}`,
     outPath,
   })
-  finish({ ok: true, path: result.path, width, height, seed, prompt, ...result }, EXIT.ok)
+  finish({ ok: true, path: result.path, width, height, seed, prompt, ...result, ...(warning && { warning }) }, EXIT.ok)
 }
 
 runCli(main)
