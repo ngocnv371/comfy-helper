@@ -28,6 +28,8 @@ import {
   COMMON_OPTIONS_HELP,
   CliError,
   EXIT,
+  applyOverrides,
+  applyTokens,
   configureLog,
   connect,
   finish,
@@ -83,47 +85,6 @@ Output (stdout, one JSON line):
 
 Exit codes: 0 ok, 1 render failed, 2 bad arguments, 3 ComfyUI unreachable.
 Renders are serialised by ComfyUI's own queue, so parallel calls are safe but wait their turn.`
-
-// --- workflow -----------------------------------------------------------------
-
-/**
- * Substitutes tokens inside the serialised workflow. The value is JSON-escaped and its quotes
- * stripped before splicing, so prompts with quotes, backslashes or newlines stay valid JSON.
- */
-function applyTokens(workflow, replacements) {
-  let text = JSON.stringify(workflow)
-  for (const [token, value] of Object.entries(replacements)) {
-    if (!text.includes(token)) throw new CliError(`token ${token} not found in the workflow`, EXIT.usage)
-    text = text.split(token).join(JSON.stringify(value).slice(1, -1))
-  }
-  return JSON.parse(text)
-}
-
-const nodesOf = (workflow) => Object.values(workflow).filter((node) => node && typeof node === 'object' && node.inputs)
-
-function applyOverrides(workflow, { width, height, seed, steps, negative }) {
-  const nodes = nodesOf(workflow)
-  const latents = nodes.filter((node) => /LatentImage/.test(node.class_type ?? ''))
-  if (!latents.length) throw new CliError('workflow has no latent-image node — cannot set the size', EXIT.usage)
-  for (const node of latents) {
-    node.inputs.width = width
-    node.inputs.height = height
-  }
-
-  for (const node of nodes) {
-    if (typeof node.inputs.seed === 'number') node.inputs.seed = seed
-    if (steps !== null && typeof node.inputs.steps === 'number') node.inputs.steps = steps
-  }
-
-  if (negative !== null) {
-    // The negative prompt is whatever text encoder feeds a sampler's `negative` input.
-    for (const sampler of nodes.filter((node) => Array.isArray(node.inputs.negative))) {
-      const encoder = workflow[sampler.inputs.negative[0]]
-      if (encoder?.inputs && typeof encoder.inputs.text === 'string') encoder.inputs.text = negative
-    }
-  }
-  return workflow
-}
 
 // --- main ---------------------------------------------------------------------
 

@@ -7,6 +7,7 @@ went wrong. If ComfyUI is not already running at `http://127.0.0.1:8188`, the to
 | Script | What it does | Model |
 |---|---|---|
 | `comfy-image.mjs` | Text to image | Z-Image Turbo |
+| `comfy-icon.mjs` | Text to game icon with a **transparent background** (RGBA PNG, flat white pictogram) | Z-Image Turbo + BiRefNet |
 | `comfy-edit.mjs` | Edit from one or more reference images | FLUX.2 Klein |
 | `comfy-music.mjs` | Text (plus optional lyrics) to music | ACE-Step 1.5 turbo |
 
@@ -52,6 +53,20 @@ Example:
 
 Long prompts are awkward to quote on a command line, so pass them with `--prompt-file`, or pipe
 them in with `--prompt -`.
+
+## Icons: transparent background
+
+`comfy-icon.mjs` always produces an icon with a **transparent background**: an RGBA PNG holding
+a flat white pictogram, ready to place over any UI. It renders the icon white on black, then cuts
+the black background out to alpha with BiRefNet. Pass `--opaque` only if you want the black
+background kept.
+
+Icon prompts are short. Describe only the one object and its shape (for example "A simple icon
+of a single armoured gauntlet glove, upright, with a wide flared cuff and the fingers together
+pointing up."). The script adds the icon style itself (flat white on black, one object, no text).
+Pass `--raw` to send your prompt as-is.
+
+## Other prompts
 
 `comfy-edit.mjs` prompts work differently. Describe the change you want and say what must stay
 the same (see its `--help`). `comfy-music.mjs` takes a style prompt made of comma-separated tags.
