@@ -10,6 +10,7 @@ went wrong. If ComfyUI is not already running at `http://127.0.0.1:8188`, the to
 | `comfy-icon.mjs` | Text to game icon with a **transparent background** (RGBA PNG, flat white pictogram) | Z-Image Turbo + BiRefNet |
 | `comfy-edit.mjs` | Edit from one or more reference images | FLUX.2 Klein |
 | `comfy-music.mjs` | Text (plus optional lyrics) to music | ACE-Step 1.5 turbo |
+| `comfy-3d.mjs` | Image to a textured, game-ready GLB | Pixal3D or TRELLIS.2 |
 
 Run any of them with `--help` to see every option.
 
@@ -65,6 +66,17 @@ Icon prompts are short. Describe only the one object and its shape (for example 
 of a single armoured gauntlet glove, upright, with a wide flared cuff and the fingers together
 pointing up."). The script adds the icon style itself (flat white on black, one object, no text).
 Pass `--raw` to send your prompt as-is.
+
+## 3D models: keep textures small
+
+`comfy-3d.mjs` takes one image of a single object and writes a GLB. The background is removed
+first. It then decimates the model to `--faces` triangles (default 9000) and bakes base colour,
+metallic/roughness, ambient occlusion and normal maps at `--texture` pixels (default 512).
+
+Texture size, not face count, decides how big the file is. A 9k-face mesh takes about 0.5 MB.
+At 4096 the textures add about 11 MB, while at 1024 they add about 2 MB (half of that is the
+normal map), and 512 cuts that by about four times again. Raise `--texture` only for a model
+that will be seen close up.
 
 ## Other prompts
 
