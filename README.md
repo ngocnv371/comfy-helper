@@ -78,7 +78,62 @@ At 4096 the textures add about 11 MB, while at 1024 they add about 2 MB (half of
 normal map), and 512 cuts that by about four times again. Raise `--texture` only for a model
 that will be seen close up.
 
+## Music: tags drive the sound
+
+`comfy-music.mjs` takes three things that matter most: the tags (`--prompt`), the tempo
+(`--bpm`) and the lyrics (`--lyrics` or `--lyrics-file`).
+
+**Tags do the heavy lifting.** Pass them as comma-separated tags and be specific about genre,
+mood, texture, instruments and vocals: `"lo-fi hip-hop, mellow, vinyl crackle, rhodes piano, soft
+drums, 75 BPM"` gives you far more than `"chill music"`. Put the tempo in the tags too, and set
+`--bpm` to the same number (it defaults to 120).
+
+### Instrumental
+
+Let the tags drive it and set the lyrics to `[inst]`:
+
+```bash
+node comfy-music.mjs --prompt "lo-fi hip-hop, mellow, vinyl crackle, rhodes piano, soft drums, 75 BPM" \
+  --bpm 75 --lyrics "[inst]" --duration 90
+```
+
+If vocals still creep in, add `no vocals` to the tags as well.
+
+### Full vocal song with structure
+
+Name the vocal in the tags, and write the lyrics with section markers (`[Verse]`, `[Chorus]`,
+`[Bridge]`, `[Outro]`), each on its own line. Keep the meter of the lines in a section
+consistent. A section can hold a short direction instead of lines to sing, as `[Bridge]` and
+`[Outro]` do below. Multi-line lyrics are easiest to pass in a file. `song.txt`:
+
+```text
+[Verse]
+Chalk on the palms, laces double-knotted
+Morning on the ridge, the sun is rising
+[Chorus]
+We rise, we strike, we never fade out
+We rise, we strike, we sing it loud
+[Bridge]
+Soft piano breakdown
+[Outro]
+Full band, fade
+```
+
+```bash
+node comfy-music.mjs --prompt "indie pop, anthemic, electric guitar, driving drums, female vocal, 120 BPM" \
+  --bpm 120 --lyrics-file song.txt --duration 120
+```
+
+### More tips
+
+- **Other languages.** ACE-Step 1.5 sings in 50+ languages. Write the lyrics in the target
+  language, name it in the tags (`"japanese vocal, j-pop"`), and pass `--language` (for example
+  `--language ja`).
+- **Draft short, then render long.** A 30-second piece renders in about 14 seconds, so iterate on
+  the tags with `--duration 30` first. Each run prints its `seed` in the JSON output; pass it back
+  with `--seed` to keep a result reproducible. Leave `--seed` out to explore variations.
+
 ## Other prompts
 
 `comfy-edit.mjs` prompts work differently. Describe the change you want and say what must stay
-the same (see its `--help`). `comfy-music.mjs` takes a style prompt made of comma-separated tags.
+the same (see its `--help`).
