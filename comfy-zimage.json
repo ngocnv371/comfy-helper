@@ -124,5 +124,58 @@
     "_meta": {
       "title": "Load CLIP"
     }
+  },
+  "22:14": {
+    "inputs": {
+      "bg_removal_name": "birefnet.safetensors"
+    },
+    "class_type": "LoadBackgroundRemovalModel",
+    "_meta": {
+      "title": "Load Background Removal Model"
+    }
+  },
+  "22:20": {
+    "inputs": {
+      "bg_removal_model": [
+        "22:14",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "RemoveBackground",
+    "_meta": {
+      "title": "Remove Background"
+    }
+  },
+  "22:15": {
+    "inputs": {
+      "mask": [
+        "22:20",
+        0
+      ]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "Invert Mask"
+    }
+  },
+  "22:21": {
+    "inputs": {
+      "image": [
+        "8",
+        0
+      ],
+      "alpha": [
+        "22:15",
+        0
+      ]
+    },
+    "class_type": "JoinImageWithAlpha",
+    "_meta": {
+      "title": "Join Image with Alpha"
+    }
   }
 }

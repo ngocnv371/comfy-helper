@@ -5,7 +5,9 @@
  * code says what went wrong. ComfyUI is launched on demand; see comfy-common.mjs.
  *
  * The workflow is comfy-zimage.json beside this script: __PROMPT__ is replaced with the prompt,
- * and the latent size / seed / steps / negative prompt are overridden when asked.
+ * and the latent size / seed / steps / negative prompt are overridden when asked. With
+ * --transparent the image goes through the workflow's BiRefNet background removal and is saved
+ * as an RGBA PNG; otherwise that branch is dropped.
  *
  * A 1920x1080 render normally finishes in under 60s; the render timeout scales from that with the
  * pixel count, and is doubled for the first render after a launch (models load then).
@@ -39,6 +41,7 @@ import {
   render,
   renderTimeout,
   runCli,
+  setTransparency,
   timestampedPng,
 } from './comfy-common.mjs'
 
@@ -61,12 +64,14 @@ Usage:
   node comfy-image.mjs --start     # make sure ComfyUI is up, then exit
 
 Options:
-  --prompt <text>     The image prompt. "-" reads it from stdin. Write about three paragraphs
-                      (see README.md); under ${SHORT_PROMPT_WORDS} words logs a warning and adds a
-                      "warning" field to the output.
+  --prompt <text>     The image prompt. "-" reads it from stdin. Under ${SHORT_PROMPT_WORDS} words logs a
+                      warning and adds a "warning" field to the output. See "Prompting" below.
   --prompt-file <p>   Read the prompt from a UTF-8 text file.
   --out <path>        Where to write the PNG. Default output/comfy-image-<timestamp>.png
                       next to this script.
+  --transparent       Remove the background (BiRefNet) and write an RGBA PNG with a transparent
+                      background. Works best when the prompt puts one subject on a plain,
+                      contrasting background.
   --width <px>        Image width.  Default 1024. Multiples of 16 work best.
   --height <px>       Image height. Default 1024.
   --seed <n>          Fixed seed for a reproducible image. Default random.
@@ -78,9 +83,22 @@ Options:
                       worth of pixels (at least 60s), doubled right after a launch.
 ${COMMON_OPTIONS_HELP}
 
+Prompting (full guide and examples in README.md):
+  Cover four elements, most important first (earlier words carry more weight):
+    1. Subject      who/what, pose, clothing, expression, materials.
+    2. Style        one medium: photography, oil painting, 3D render, anime, ink painting...
+    3. Lighting     golden hour, neon glow, soft window light, dramatic shadows; mood, palette.
+    4. Composition  close-up, wide-angle, shallow depth of field, centred. Use quality words
+                    like "high detail" sparingly, two or three at most.
+  Text in the image: wrap it in straight quotes ("MORNING BLEND"), name the lettering (serif,
+  handwritten, neon, calligraphy), and keep it to one word or a short phrase.
+  Pitfalls: don't write negatives ("no people" can add people), describe the empty scene
+  instead or use --negative; don't mix styles ("realistic anime watercolor 3D render").
+
 Output (stdout, one JSON line):
   success: {"ok":true,"path":"<absolute png path>","width":1024,"height":1024,"seed":123,
-            "prompt":"...","promptId":"...","seconds":12.3,"launched":false,"attempts":1}
+            "transparent":false,"prompt":"...","promptId":"...","seconds":12.3,"launched":false,
+            "attempts":1}
   failure: {"ok":false,"error":"<message>","code":<exit code>}
 
 Exit codes: 0 ok, 1 render failed, 2 bad arguments, 3 ComfyUI unreachable.
@@ -97,6 +115,7 @@ function parseCli() {
         prompt: { type: 'string' },
         'prompt-file': { type: 'string' },
         out: { type: 'string' },
+        transparent: { type: 'boolean', default: false },
         width: { type: 'string', default: '1024' },
         height: { type: 'string', default: '1024' },
         seed: { type: 'string' },
@@ -124,7 +143,7 @@ async function main() {
   const words = prompt.split(/\s+/).filter(Boolean).length
   const warning =
     words < SHORT_PROMPT_WORDS
-      ? `prompt is only ${words} words; aim for about three paragraphs (subject, setting and composition, light and style) — see README.md`
+      ? `prompt is only ${words} words; cover subject, style, lighting and composition, most important first — see README.md`
       : undefined
   if (warning) log(`warning: ${warning}`)
   const width = intOption('--width', values.width, 64)
@@ -137,21 +156,25 @@ async function main() {
   if (!existsSync(workflowPath)) throw new CliError(`workflow not found: ${workflowPath}`, EXIT.usage)
   const outPath = values.out ? resolve(values.out) : timestampedPng(DEFAULT_OUTPUT_DIR, 'comfy-image')
 
-  const workflow = applyOverrides(applyTokens(JSON.parse(readFileSync(workflowPath, 'utf8')), { [PROMPT_TOKEN]: prompt }), {
-    width,
-    height,
-    seed,
-    steps,
-    negative: values.negative ?? null,
-  })
+  const transparent = values.transparent
+  const workflow = setTransparency(
+    applyOverrides(applyTokens(JSON.parse(readFileSync(workflowPath, 'utf8')), { [PROMPT_TOKEN]: prompt }), {
+      width,
+      height,
+      seed,
+      steps,
+      negative: values.negative ?? null,
+    }),
+    transparent,
+  )
 
   const result = await render(session, {
     prepare: async () => workflow,
     timeoutFor,
-    describe: `${width}x${height}, seed ${seed}`,
+    describe: `${width}x${height}, seed ${seed}${transparent ? ', transparent' : ''}`,
     outPath,
   })
-  finish({ ok: true, path: result.path, width, height, seed, prompt, ...result, ...(warning && { warning }) }, EXIT.ok)
+  finish({ ok: true, path: result.path, width, height, seed, transparent, prompt, ...result, ...(warning && { warning }) }, EXIT.ok)
 }
 
 runCli(main)

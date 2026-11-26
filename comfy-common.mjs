@@ -191,6 +191,37 @@ export function applyOverrides(workflow, { width, height, seed, steps, negative 
   return workflow
 }
 
+const IMAGE_OUTPUT_NODE = /^(Save|Preview)Image$/
+
+/**
+ * Chooses between the plain image and its background-removed version. Every image output node
+ * is pointed at the JoinImageWithAlpha node (transparent) or at the VAEDecode node (opaque), and
+ * nodes no output depends on are dropped, so an opaque render never loads the cutout model.
+ */
+export function setTransparency(workflow, transparent) {
+  const find = (classType) => Object.keys(workflow).find((id) => workflow[id]?.class_type === classType)
+  const source = transparent ? find('JoinImageWithAlpha') : find('VAEDecode')
+  if (!source) {
+    const missing = transparent ? 'a JoinImageWithAlpha node — cannot make the background transparent' : 'a VAEDecode node'
+    throw new CliError(`workflow has no ${missing}`, EXIT.usage)
+  }
+  const outputs = Object.keys(workflow).filter((id) => IMAGE_OUTPUT_NODE.test(workflow[id]?.class_type ?? ''))
+  if (!outputs.length) throw new CliError('workflow has no SaveImage/PreviewImage node', EXIT.usage)
+  for (const id of outputs) workflow[id].inputs.images = [source, 0]
+
+  const needed = new Set()
+  const visit = (id) => {
+    if (needed.has(id) || !workflow[id]) return
+    needed.add(id)
+    for (const value of Object.values(workflow[id].inputs ?? {})) {
+      if (Array.isArray(value) && typeof value[0] === 'string') visit(value[0])
+    }
+  }
+  outputs.forEach(visit)
+  for (const id of Object.keys(workflow)) if (!needed.has(id)) delete workflow[id]
+  return workflow
+}
+
 // --- ComfyUI client -----------------------------------------------------------
 
 export class ComfyClient {

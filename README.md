@@ -6,8 +6,8 @@ went wrong. If ComfyUI is not already running at `http://127.0.0.1:8188`, the to
 
 | Script | What it does | Model |
 |---|---|---|
-| `comfy-image.mjs` | Text to image | Z-Image Turbo |
-| `comfy-icon.mjs` | Text to game icon with a **transparent background** (RGBA PNG, flat white pictogram) | Z-Image Turbo + BiRefNet |
+| `comfy-image.mjs` | Text to image, optionally with a transparent background (`--transparent`) | Z-Image Turbo (+ BiRefNet) |
+| `comfy-icon.mjs` | `comfy-image.mjs` forced to a square with a **transparent background** | Z-Image Turbo + BiRefNet |
 | `comfy-edit.mjs` | Edit from one or more reference images | FLUX.2 Klein |
 | `comfy-music.mjs` | Text (plus optional lyrics) to music | ACE-Step 1.5 turbo |
 | `comfy-3d.mjs` | Image to a textured, game-ready GLB | Pixal3D or TRELLIS.2 |
@@ -18,54 +18,74 @@ Run any of them with `--help` to see every option.
 node comfy-image.mjs --prompt-file prompt.txt --out D:/tmp/fox.png
 ```
 
-## Image prompts: write about three paragraphs
+## Image prompts: the four elements, most important first
 
 **A one-sentence prompt will not give you a good image.** Something like "a red fox in snow"
-leaves the model to guess everything else, and you get a flat, generic picture. Write about
-**three paragraphs** that describe the image the way a photographer or art director would brief
-it:
+leaves the model to guess everything else, and you get a flat, generic picture. A good Z-Image
+prompt covers four elements. **Put the most important content at the very beginning**: the model
+gives more weight to the words that come first.
 
-1. **Subject.** Say who or what is in the picture and what they look like: appearance, clothing,
-   pose, expression, materials and textures.
-2. **Setting and composition.** Describe where it takes place and what surrounds the subject:
-   background, time of day, weather. Then give the framing: shot type, camera angle, lens, depth
-   of field, and where the subject sits in the frame.
-3. **Light, mood and style.** Describe the light (its direction, quality and colour), the
-   palette, the atmosphere, and the medium: photo, film stock, illustration or painting. Add any
-   finishing detail.
+1. **Subject.** Be specific: who or what it is, pose, clothing, expression, materials and
+   textures.
+2. **Style.** Name the medium: oil painting, photography, 3D render, anime, ink painting, a film
+   stock.
+3. **Lighting and atmosphere.** For example golden hour, neon glow, soft window light, dramatic
+   shadows, plus the mood and palette.
+4. **Composition and quality.** For example close-up, wide-angle, shallow depth of field,
+   centred composition. Use quality modifiers like "high detail" sparingly, two or three at most.
 
 Example:
 
 > A young red fox stands alert in fresh powder snow, its thick winter coat glowing copper against
 > the white, with frost caught in the fur around its muzzle and ears. One front paw is lifted
-> mid-step, and its amber eyes look just past the camera.
+> mid-step, and its amber eyes look just past the camera. It stands at the edge of a quiet birch
+> forest, thin pale trunks fading into soft mist behind it.
 >
-> The fox stands at the edge of a quiet birch forest at dawn. Thin pale trunks fade into soft
-> mist behind it, and a few dry grass stalks poke through the snow in the foreground. Low-angle
-> shot at the fox's eye level, 200mm telephoto, shallow depth of field, with the fox placed on
-> the left third of the frame.
->
-> Warm, low sunrise light comes from the right and rims the fur with gold, while the shadows in
-> the snow stay cool blue. The mood is calm and crisp. Wildlife photography with natural colour
-> and fine detail, as if shot on a full-frame camera, with fine snow drifting through the air.
+> Wildlife photography, natural colour, as if shot on a full-frame camera. Warm, low sunrise
+> light comes from the right and rims the fur with gold, while the shadows in the snow stay cool
+> blue; the mood is calm and crisp, with fine snow drifting through the air. Low-angle shot at
+> the fox's eye level, 200mm telephoto, shallow depth of field, the fox on the left third of the
+> frame.
+
+A realistic portrait can lead with the style instead, when the look matters most:
+
+> Film grain, analog film texture, soft film lighting, Kodak Portra 400 style. Close-up shot of a
+> young East Asian woman standing in a snowy outdoor scene, wearing a blue and white thick coat
+> and a dark gray helmet, with dark long straight hair slightly messy in the wind, looking up
+> with a slightly surprised expression, natural daylight, fresh and natural tones.
 
 `comfy-image.mjs` warns when a prompt is under 50 words. It logs the warning to stderr and adds a
 `"warning"` field to its JSON output, but it still renders the image.
 
+### Text in the image
+
+Z-Image can render readable English and Chinese text. To get it reliably:
+
+- Wrap the text in straight double quotes: `"MORNING BLEND"`, `"新年快乐"`.
+- Describe the lettering: serif, handwritten, neon, calligraphy, and so on.
+- Keep it short. One word or a short phrase per image works best.
+
+> Red Chinese New Year poster, with the four golden calligraphy characters "新年快乐" in the
+> center, surrounded by plum blossoms and lanterns at the edges, traditional ink painting style.
+
+### Pitfalls
+
+- **Don't write negatives in the prompt.** "No people" can make people appear. Describe the
+  empty scene you want instead (or use `--negative`).
+- **Don't mix conflicting styles.** "Realistic anime watercolor 3D render" confuses the model.
+  Pick one primary style.
+
 Long prompts are awkward to quote on a command line, so pass them with `--prompt-file`, or pipe
 them in with `--prompt -`.
 
-## Icons: transparent background
+## Transparent backgrounds and icons
 
-`comfy-icon.mjs` always produces an icon with a **transparent background**: an RGBA PNG holding
-a flat white pictogram, ready to place over any UI. It renders the icon white on black, then cuts
-the black background out to alpha with BiRefNet. Pass `--opaque` only if you want the black
-background kept.
+`comfy-image.mjs --transparent` cuts the background out with BiRefNet and writes an RGBA PNG. It
+works best when the prompt puts one subject on a plain, contrasting background.
 
-Icon prompts are short. Describe only the one object and its shape (for example "A simple icon
-of a single armoured gauntlet glove, upright, with a wide flared cuff and the fingers together
-pointing up."). The script adds the icon style itself (flat white on black, one object, no text).
-Pass `--raw` to send your prompt as-is.
+`comfy-icon.mjs` runs `comfy-image.mjs` with `--transparent` and a square size (`--size`, default
+768). It adds nothing to the prompt, so write it like any other image prompt. Every other option
+is passed through to `comfy-image.mjs`.
 
 ## 3D models: keep textures small
 
